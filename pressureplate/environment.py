@@ -37,11 +37,12 @@ class Plate(Entity):
         super().__init__(id, x, y)
         self.pressed = False
 
-
+# Countdown added - Changed
 class Door(Entity):
     def __init__(self, id, x, y):
         super().__init__(id, x, y)
         self.open = False
+        self.openCountDown = 0
 
 
 class Wall(Entity):
@@ -65,14 +66,18 @@ class PressurePlate(gym.Env):
         self.sensor_range = sensor_range
 
         self.grid = np.zeros((5, *self.grid_size))
+        
 
         self.action_space = spaces.Tuple(tuple(n_agents * [spaces.Discrete(len(Actions))]))
 
         self.action_space_dim = (sensor_range + 1) * (sensor_range + 1) * 4 + 2
 
         self.observation_space = spaces.Tuple(tuple(
-            n_agents * [spaces.Box(np.array([0] * self.action_space_dim), np.array([1] * self.action_space_dim))]
+        n_agents * [spaces.Box(np.array([0] * self.action_space_dim), np.array([1] * self.action_space_dim))]
         ))
+
+
+        
         self.agents = []
         self.plates = []
         self.walls = []
@@ -90,6 +95,9 @@ class PressurePlate(gym.Env):
 
             elif self.n_agents == 6:
                 self.layout = LINEAR['SIX_PLAYERS']
+
+            elif self.n_agents == 1:
+                self.layout = LINEAR['ONE_PLAYER']
             else:
                 raise ValueError(f'Number of agents given ({self.n_agents}) is not supported.')
 
@@ -130,17 +138,44 @@ class PressurePlate(gym.Env):
             else:
                 # NOOP
                 pass
+        
 
+        #CountDown added  - Changed
+        #Different agents can use pressure plate  - Changed
         for i, plate in enumerate(self.plates):
+            #for agentId in range(0, len(self.agents)):
+            plate_coordinates = np.array([plate.x, plate.y])
+            agents_coordinates = np.array([[self.agents[agentId].x, self.agents[agentId].y] for agentId in range(0, len(self.agents)) ])
             if not plate.pressed:
-                if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
+                if any(np.all(plate_coordinates == agent_coordinates) for agent_coordinates in agents_coordinates):
                     plate.pressed = True
                     self.doors[plate.id].open = True
+                    if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
+                        self.doors[plate.id].openCountDown = 6
+                    else:
+                        # Agent[plate.id] may have used before so we need to take max of it
+                        self.doors[plate.id].openCountDown = max(self.doors[plate.id].openCountDown, 3) #2
+                    break
 
             else:
-                if [plate.x, plate.y] != [self.agents[plate.id].x, self.agents[plate.id].y]:
+                if not any(np.all(plate_coordinates == agent_coordinates) for agent_coordinates in agents_coordinates):
                     plate.pressed = False
-                    self.doors[plate.id].open = False
+                    self.doors[plate.id].open = (self.doors[plate.id].openCountDown > 0)
+                else:
+                    plate.pressed = True
+                    self.doors[plate.id].open = True
+                    if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
+                        self.doors[plate.id].openCountDown = 6
+                    else:
+                        # Agent[plate.id] may have used before so we need to take max of it
+                        self.doors[plate.id].openCountDown = max(self.doors[plate.id].openCountDown, 3) #2
+
+
+        # Door Countdown  - Changed
+        for i, door in enumerate(self.doors):
+            if door.open is True:
+                door.openCountDown = door.openCountDown - 1
+                door.open = (door.openCountDown > 0)
 
         # Detecting goal completion
         r = []
@@ -151,6 +186,7 @@ class PressurePlate(gym.Env):
         if got_goal:
             self.goal.achieved = True
 
+        print( self._get_rewards() )
         return self._get_obs(), self._get_rewards(), [self.goal.achieved] * self.n_agents, {}
 
     def _detect_collision(self, proposed_position):
@@ -340,6 +376,7 @@ class PressurePlate(gym.Env):
             if i == curr_room:
                 reward = - np.linalg.norm((np.array(plate_loc) - np.array(agent_loc)), 1) / self.max_dist
             else:
+                #print(str(agent.x) + "," + str(agent.y))
                 reward = -len(self.room_boundaries)+1 + curr_room
             
             rewards.append(reward)

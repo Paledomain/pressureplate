@@ -253,8 +253,22 @@ class Viewer:
 
         for plate in env.plates:
             row, col = plate.y, plate.x
+            
+            if env.doors[plate.id].openCountDown > 0:
+                label = pyglet.text.Label(
+                    f"{env.doors[plate.id].openCountDown} s",
+                    font_name='Arial',
+                    font_size=12,
+                    x=self.grid_size * col + self.grid_size // 2,
+                    y=self.height - self.grid_size * (row + 1) - self.grid_size // 2,
+                    anchor_x='center',
+                    anchor_y='center',
+                    color=(255, 255, 255, 255),
+                    batch=batch
+                )
 
             if plate.pressed:
+                
                 plates.append(
                     pyglet.sprite.Sprite(
                         self.img_plate_on,

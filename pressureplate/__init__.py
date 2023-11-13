@@ -1,6 +1,16 @@
 from gym.envs.registration import register
 
-
+register(
+    id=f'pressureplate-linear-1p-v0',
+    entry_point='pressureplate.environment:PressurePlate',
+    kwargs={
+        'height': 15,
+        'width': 9,
+        'n_agents': 1,
+        'sensor_range': 4,
+        'layout': 'linear'
+    }
+)
 
 register(
     id=f'pressureplate-linear-4p-v0',

@@ -2,7 +2,7 @@ import gym
 from gym import spaces
 import numpy as np
 from enum import IntEnum
-from .assets import LINEAR
+from .assets import LINEAR, CUSTOM
 
 # Global elements
 _LAYER_AGENTS = 0
@@ -10,6 +10,7 @@ _LAYER_WALLS = 1
 _LAYER_DOORS = 2
 _LAYER_PLATES = 3
 _LAYER_GOAL = 4
+_LAYER_ZONE = 5
 
 
 class Actions(IntEnum):
@@ -28,21 +29,27 @@ class Entity:
 
 
 class Agent(Entity):
-    def __init__(self, id, x, y):
+    def __init__(self, id, x, y, agent_plate_id = None, duration = None):
         super().__init__(id, x, y)
-
+        self.agent_plate_id = agent_plate_id
+        self.duration = duration
+        self.zone = 1
 
 class Plate(Entity):
-    def __init__(self, id, x, y):
+    def __init__(self, id, x, y, agent_plate_id = None, plate_door_id = None):
         super().__init__(id, x, y)
         self.pressed = False
+        self.agent_plate_id = agent_plate_id
+        self.plate_door_id = plate_door_id
 
 # Countdown added - Changed
 class Door(Entity):
-    def __init__(self, id, x, y):
+    def __init__(self, id, x, y, agent_door_id = None ,plate_door_id = None):
         super().__init__(id, x, y)
         self.open = False
         self.openCountDown = 0
+        self.plate_door_id = plate_door_id 
+        self.agent_door_id = agent_door_id
 
 
 class Wall(Entity):
@@ -65,15 +72,14 @@ class PressurePlate(gym.Env):
         self.n_agents = n_agents
         self.sensor_range = sensor_range
 
-        self.grid = np.zeros((5, *self.grid_size))
-        
+        self.grid = np.zeros((6, *self.grid_size))
 
         self.action_space = spaces.Tuple(tuple(n_agents * [spaces.Discrete(len(Actions))]))
 
-        self.action_space_dim = (sensor_range + 1) * (sensor_range + 1) * 4 + 2
+        self.observation_space_dim = self.grid_size[0] * self.grid_size[1] + 2
 
         self.observation_space = spaces.Tuple(tuple(
-        n_agents * [spaces.Box(np.array([0] * self.action_space_dim), np.array([1] * self.action_space_dim))]
+        n_agents * [spaces.Box(np.array([0] * self.observation_space_dim), np.array([1] * self.observation_space_dim))]
         ))
 
 
@@ -85,7 +91,6 @@ class PressurePlate(gym.Env):
         self.goal = None
 
         self._rendering_initialized = False
-
         if layout == 'linear':
             if self.n_agents == 4:
                 self.layout = LINEAR['FOUR_PLAYERS']
@@ -100,6 +105,9 @@ class PressurePlate(gym.Env):
                 self.layout = LINEAR['ONE_PLAYER']
             else:
                 raise ValueError(f'Number of agents given ({self.n_agents}) is not supported.')
+        elif layout == "custom":
+            if self.n_agents == 4:
+                self.layout = CUSTOM["FOUR_PLAYERS"]
 
         self.max_dist = np.linalg.norm(np.array([0, 0]) - np.array([2, 8]), 1)
         self.agent_order = list(range(n_agents))
@@ -118,22 +126,35 @@ class PressurePlate(gym.Env):
             if actions[i] == 0:
                 proposed_pos[1] -= 1
                 if not self._detect_collision(proposed_pos):
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 0 #remove agent's old position from the grid
                     self.agents[i].y -= 1
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 1 #add the agent's new position to the grid
+                    self.agents[i].zone = self.grid[_LAYER_ZONE, self.agents[i].y, self.agents[i].x]
+                    
 
             elif actions[i] == 1:
                 proposed_pos[1] += 1
                 if not self._detect_collision(proposed_pos):
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 0
                     self.agents[i].y += 1
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 1
+                    self.agents[i].zone = self.grid[_LAYER_ZONE, self.agents[i].y, self.agents[i].x]
 
             elif actions[i] == 2:
                 proposed_pos[0] -= 1
                 if not self._detect_collision(proposed_pos):
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 0
                     self.agents[i].x -= 1
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 1
+                    self.agents[i].zone = self.grid[_LAYER_ZONE, self.agents[i].y, self.agents[i].x]
 
             elif actions[i] == 3:
                 proposed_pos[0] += 1
                 if not self._detect_collision(proposed_pos):
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 0
                     self.agents[i].x += 1
+                    self.grid[_LAYER_AGENTS, self.agents[i].y, self.agents[i].x ] = 1
+                    self.agents[i].zone = self.grid[_LAYER_ZONE, self.agents[i].y, self.agents[i].x]
 
             else:
                 # NOOP
@@ -142,48 +163,68 @@ class PressurePlate(gym.Env):
 
         #CountDown added  - Changed
         #Different agents can use pressure plate  - Changed
-        for i, plate in enumerate(self.plates):
-            #for agentId in range(0, len(self.agents)):
-            plate_coordinates = np.array([plate.x, plate.y])
-            agents_coordinates = np.array([[self.agents[agentId].x, self.agents[agentId].y] for agentId in range(0, len(self.agents)) ])
-            if not plate.pressed:
-                if any(np.all(plate_coordinates == agent_coordinates) for agent_coordinates in agents_coordinates):
-                    plate.pressed = True
-                    self.doors[plate.id].open = True
-                    if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
-                        self.doors[plate.id].openCountDown = 6
-                    else:
-                        # Agent[plate.id] may have used before so we need to take max of it
-                        self.doors[plate.id].openCountDown = max(self.doors[plate.id].openCountDown, 3) #2
-                    break
+        #for i, plate in enumerate(self.plates):
+        #    #for agentId in range(0, len(self.agents)):
+        #    plate_coordinates = np.array([plate.x, plate.y])
+        #    agents_coordinates = np.array([[self.agents[agentId].x, self.agents[agentId].y] for agentId in range(0, len(self.agents)) ])
+        #    if not plate.pressed:
+        #        if any(np.all(plate_coordinates == agent_coordinates) for agent_coordinates in agents_coordinates):
+        #            plate.pressed = True
+        #            self.doors[plate.id].open = True
+        #            if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
+        #                self.doors[plate.id].openCountDown = 6
+        #            else:
+        #                # Agent[plate.id] may have used before so we need to take max of it
+        #                self.doors[plate.id].openCountDown = max(self.doors[plate.id].openCountDown, 3) #2
+        #            break
+        #    else:
+        #        if not any(np.all(plate_coordinates == agent_coordinates) for agent_coordinates in agents_coordinates):
+        #            plate.pressed = False
+        #            self.doors[plate.id].open = (self.doors[plate.id].openCountDown > 0)
+        #        else:
+        #            plate.pressed = True
+        #            self.doors[plate.id].open = True
+        #            if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
+        #                self.doors[plate.id].openCountDown = 6
+        #            else:
+        #                # Agent[plate.id] may have used before so we need to take max of it
+        #                self.doors[plate.id].openCountDown = max(self.doors[plate.id].openCountDown, 3) #2
 
-            else:
-                if not any(np.all(plate_coordinates == agent_coordinates) for agent_coordinates in agents_coordinates):
-                    plate.pressed = False
-                    self.doors[plate.id].open = (self.doors[plate.id].openCountDown > 0)
-                else:
-                    plate.pressed = True
-                    self.doors[plate.id].open = True
-                    if [plate.x, plate.y] == [self.agents[plate.id].x, self.agents[plate.id].y]:
-                        self.doors[plate.id].openCountDown = 6
-                    else:
-                        # Agent[plate.id] may have used before so we need to take max of it
-                        self.doors[plate.id].openCountDown = max(self.doors[plate.id].openCountDown, 3) #2
-
-
-        # Door Countdown  - Changed
+         # Door Countdown  - Changed #is it okay to change door status before moving agents??????
         for i, door in enumerate(self.doors):
             if door.open is True:
                 door.openCountDown = door.openCountDown - 1
                 door.open = (door.openCountDown > 0)
+                if door.open:
+                    self.grid[_LAYER_DOORS, door.y, door.x] = 2
+                else:
+                    self.grid[_LAYER_DOORS, door.y, door.x] = 1
+
+        
+        for plate in self.plates:
+            plate.pressed = False
+            for agent in self.agents:
+                for door in self.doors:
+                    if plate.x == agent.x and plate.y == agent.y:
+                        if plate.agent_plate_id == agent.agent_plate_id:
+                            plate.pressed = True
+                            if plate.plate_door_id == door.plate_door_id:
+                                door.open = True
+                                self.grid[_LAYER_DOORS, door.y, door.x] = 2
+                                door.openCountDown = max(door.openCountDown, agent.duration)
+                                
+
+
+       
+
 
         # Detecting goal completion
-        r = []
+        completed = True
         for agent in self.agents:
-            r.append([agent.x, agent.y] == [self.goal.x, self.goal.y])
-        got_goal = np.sum(r) > 0
+            if self.grid[_LAYER_ZONE, agent.y, agent.x] != 6:
+                completed = False
 
-        if got_goal:
+        if completed:
             self.goal.achieved = True
 
         print( self._get_rewards() )
@@ -216,22 +257,23 @@ class PressurePlate(gym.Env):
         for agent in self.agents:
             if proposed_position == [agent.x, agent.y]:
                 return True
+            
+        if proposed_position == self.goal:
+            return True
 
         return False
 
     def reset(self):
         # Grid wipe
-        self.grid = np.zeros((5, *self.grid_size))
+        self.grid = np.zeros((6, *self.grid_size))
 
         # Agents
         self.agents = []
         for i in range(self.n_agents):
-            self.agents.append(Agent(i,
-                                    self.layout['AGENTS'][self.agent_order[i]][0],
-                                    self.layout['AGENTS'][self.agent_order[i]][1]))
-            self.grid[_LAYER_AGENTS,
-                    self.layout['AGENTS'][self.agent_order[i]][1],
-                    self.layout['AGENTS'][self.agent_order[i]][0]] = 1
+            pos, agent_plate_id, duration = self.layout['AGENTS'][self.agent_order[i]]
+            
+            self.agents.append(Agent(i, pos[0], pos[1], agent_plate_id = agent_plate_id , duration = duration))
+            self.grid[_LAYER_AGENTS, pos[1], pos[0]] = 1
 
         # Walls
         self.walls = []
@@ -242,28 +284,45 @@ class PressurePlate(gym.Env):
         # Doors
         self.doors = []
         for i, door in enumerate(self.layout['DOORS']):
-            self.doors.append(Door(i, door[0], door[1]))
-            for j in range(len(door[0])):
-                self.grid[_LAYER_DOORS, door[1][j], door[0][j]] = 1
+            self.doors.append(Door(i, door[0][0], door[0][1], agent_door_id = door[1], plate_door_id = door[2]))
+            for j in range(len(door[0][0])):
+                self.grid[_LAYER_DOORS, door[0][1][j], door[0][0][j]] = 1
 
         # Plate
         self.plates = []
         for i, plate in enumerate(self.layout['PLATES']):
-            self.plates.append(Plate(i, plate[0], plate[1]))
-            self.grid[_LAYER_PLATES, plate[1], plate[0]] = 1
+            self.plates.append(Plate(i, plate[0][0], plate[0][1], agent_plate_id = plate[1], plate_door_id = plate[2]))
+            self.grid[_LAYER_PLATES, plate[0][1], plate[0][0]] = 1
 
         # Goal
         self.goal = []
         self.goal = Goal('goal', self.layout['GOAL'][0][0], self.layout['GOAL'][0][1])
         self.grid[_LAYER_GOAL, self.layout['GOAL'][0][1], self.layout['GOAL'][0][0]] = 1
 
+        #zones
+        for i in range(1,7):
+            for j in range(len(self.layout[f"ZONE{i}"])):
+                self.grid[_LAYER_ZONE, self.layout[f"ZONE{i}"][j][1], self.layout[f"ZONE{i}"][j][0]] = i
+
         return self._get_obs()
 
     def _get_obs(self):
         obs = []
+        """
+        _agents = self.grid[_LAYER_AGENTS,:,:] #2D arrays of grid size. Entry is 1 if respective entity exists on the entry coordiante and 0 otherwise
+        _walls = self.grid[_LAYER_WALLS,:,:]
+        _doors = self.grid[_LAYER_DOORS,:,:]
+        _plates = self.grid[_LAYER_PLATES,:,:]
+        _goal = self.grid[_LAYER_GOAL,:,:]
+        common_obs = _agents + 2 * _walls + 3 * _goal + 4 * _doors + 7 * _plates
+        for door in self.doors:
+            if door.open:
+                common_obs[door.y, door.x] += 2   
+        common_obs = common_obs.reshape(-1) """
 
         for agent in self.agents:
-            x, y = agent.x, agent.y
+            x = agent.x
+            y = agent.y
             pad = self.sensor_range // 2
 
             x_left = max(0, x - pad)
@@ -281,40 +340,40 @@ class PressurePlate(gym.Env):
             # For walls, we pad with ones, as edges of the grid act in the same way as walls.
             # For padding, we follow a simple pattern: pad left, pad right, pad up, pad down
             # Agents
-            _agents = self.grid[_LAYER_AGENTS, y_up:y_down + 1, x_left:x_right + 1]
+            _agents = self.grid[_LAYER_AGENTS,y_up:y_down + 1, x_left:x_right + 1]
 
             _agents = np.concatenate((np.zeros((_agents.shape[0], x_left_padding)), _agents), axis=1)
             _agents = np.concatenate((_agents, np.zeros((_agents.shape[0], x_right_padding))), axis=1)
             _agents = np.concatenate((np.zeros((y_up_padding, _agents.shape[1])), _agents), axis=0)
             _agents = np.concatenate((_agents, np.zeros((y_down_padding, _agents.shape[1]))), axis=0)
-            _agents = _agents.reshape(-1)
+            
 
             # Walls
-            _walls = self.grid[_LAYER_WALLS, y_up:y_down + 1, x_left:x_right + 1]
+            _walls = self.grid[_LAYER_WALLS,y_up:y_down + 1, x_left:x_right + 1]
 
             _walls = np.concatenate((np.ones((_walls.shape[0], x_left_padding)), _walls), axis=1)
             _walls = np.concatenate((_walls, np.ones((_walls.shape[0], x_right_padding))), axis=1)
             _walls = np.concatenate((np.ones((y_up_padding, _walls.shape[1])), _walls), axis=0)
             _walls = np.concatenate((_walls, np.ones((y_down_padding, _walls.shape[1]))), axis=0)
-            _walls = _walls.reshape(-1)
+            
 
             # Doors
-            _doors = self.grid[_LAYER_DOORS, y_up:y_down + 1, x_left:x_right + 1]
+            _doors = self.grid[_LAYER_DOORS,y_up:y_down + 1, x_left:x_right + 1]
 
             _doors = np.concatenate((np.zeros((_doors.shape[0], x_left_padding)), _doors), axis=1)
             _doors = np.concatenate((_doors, np.zeros((_doors.shape[0], x_right_padding))), axis=1)
             _doors = np.concatenate((np.zeros((y_up_padding, _doors.shape[1])), _doors), axis=0)
             _doors = np.concatenate((_doors, np.zeros((y_down_padding, _doors.shape[1]))), axis=0)
-            _doors = _doors.reshape(-1)
+            
 
             # Plate
-            _plates = self.grid[_LAYER_PLATES, y_up:y_down + 1, x_left:x_right + 1]
+            _plates = self.grid[_LAYER_PLATES,y_up:y_down + 1, x_left:x_right + 1]
 
             _plates = np.concatenate((np.zeros((_plates.shape[0], x_left_padding)), _plates), axis=1)
             _plates = np.concatenate((_plates, np.zeros((_plates.shape[0], x_right_padding))), axis=1)
             _plates = np.concatenate((np.zeros((y_up_padding, _plates.shape[1])), _plates), axis=0)
             _plates = np.concatenate((_plates, np.zeros((y_down_padding, _plates.shape[1]))), axis=0)
-            _plates = _plates.reshape(-1)
+           
 
             # Goal
             _goal = self.grid[_LAYER_GOAL, y_up:y_down + 1, x_left:x_right + 1]
@@ -323,11 +382,14 @@ class PressurePlate(gym.Env):
             _goal = np.concatenate((_goal, np.zeros((_goal.shape[0], x_right_padding))), axis=1)
             _goal = np.concatenate((np.zeros((y_up_padding, _goal.shape[1])), _goal), axis=0)
             _goal = np.concatenate((_goal, np.zeros((y_down_padding, _goal.shape[1]))), axis=0)
-            _goal = _goal.reshape(-1)
-
-            # Concat
-            obs.append(np.concatenate((_agents, _plates, _doors, _goal, np.array([x, y])), axis=0, dtype=np.float32))
-
+            
+            agent_obs = _agents + 2 * _walls + 3 * _goal + 4 * _plates + 6 * _doors
+            # agent_obs = agent_obs.reshape(-1) in production uncomment this line and the next one, this version better for human readability
+            # agent_obs = np.concatenate((agent_obs, np.array[agent.y, agent.x, agent.duration]))
+            obs.append(agent_obs)
+            #state representation: empty:0, agent:1, wall:2, goal:3, plate_and_no_agent:4, plate_and_agent:5, 
+            #closed_door_and_no_agent:6, closed_door_and_agent:7, open_door_and_no_agent:12, open_door_and_agent:13
+            #door layout changes based on the status of the doors. if door is open it is labeled with 2 otherwise 1
         return tuple(obs)
 
     def _get_flat_grid(self):

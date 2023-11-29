@@ -7,8 +7,20 @@ register(
         'height': 15,
         'width': 9,
         'n_agents': 1,
-        'sensor_range': 4,
+        'sensor_range': 3,
         'layout': 'linear'
+    }
+)
+
+register(
+    id=f'pressureplate-custom-4p-v0',
+    entry_point='pressureplate.environment:PressurePlate',
+    kwargs={
+        'height': 28,
+        'width': 14,
+        'n_agents': 4,
+        'sensor_range': 5,
+        'layout': 'custom'
     }
 )
 

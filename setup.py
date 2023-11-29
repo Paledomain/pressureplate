@@ -25,7 +25,7 @@ setup(
     install_requires=[
         "numpy",
         "gym>=0.15",
-        "pyglet",
+        "pyglet==1.5.28",
     ],
     extras_require={"test": ["pytest"]},
     include_package_data=True,

@@ -84,7 +84,7 @@ class Viewer:
         disp_width = 1000 * (self.cols / self.rows)
 
         self.window = pyglet.window.Window(
-            width=int(disp_width), height=disp_height, display=display
+            width=int(disp_width), height=int(disp_height), display=display
         )
 
         self.window.on_close = self.window_closed_by_user
@@ -253,19 +253,19 @@ class Viewer:
 
         for plate in env.plates:
             row, col = plate.y, plate.x
-            
-            if env.doors[plate.id].openCountDown > 0:
-                label = pyglet.text.Label(
-                    f"{env.doors[plate.id].openCountDown} s",
-                    font_name='Arial',
-                    font_size=12,
-                    x=self.grid_size * col + self.grid_size // 2,
-                    y=self.height - self.grid_size * (row + 1) - self.grid_size // 2,
-                    anchor_x='center',
-                    anchor_y='center',
-                    color=(255, 255, 255, 255),
-                    batch=batch
-                )
+            for door in env.doors:
+                if door.openCountDown > 0 and door.plate_door_id == plate.plate_door_id:
+                    label = pyglet.text.Label(
+                        f"{door.openCountDown} s",
+                        font_name='Arial',
+                        font_size=12,
+                        x=self.grid_size * col + self.grid_size // 2,
+                        y=self.height - self.grid_size * (row + 1) - self.grid_size // 2,
+                        anchor_x='center',
+                        anchor_y='center',
+                        color=(255, 255, 255, 255),
+                        batch=batch
+                    )
 
             if plate.pressed:
                 
@@ -328,13 +328,13 @@ class Viewer:
         # Plates
         for plate in env.plates:
             if not plate.pressed:
-                self._draw_badge(plate.y, plate.x, plate.id)
+                self._draw_badge(plate.y, plate.x, plate.agent_plate_id)
 
         # Doors
         for door in env.doors:
             if not door.open:
                 for j in range(len(door.x)):
-                    self._draw_badge(door.y[j], door.x[j], door.id)
+                    self._draw_badge(door.y[j], door.x[j], door.agent_door_id)
 
     def _draw_badge(self, row, col, id):
         resolution = 6
@@ -358,7 +358,7 @@ class Viewer:
         label = pyglet.text.Label(
             str(id),
             font_name="Times New Roman",
-            font_size=12,
+            font_size=10,
             x=badge_x,
             y=badge_y + 2,
             anchor_x="center",

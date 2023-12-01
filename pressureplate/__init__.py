@@ -19,7 +19,7 @@ register(
         'height': 28,
         'width': 14,
         'n_agents': 4,
-        'sensor_range': 5,
+        'sensor_range': 3,
         'layout': 'custom'
     }
 )

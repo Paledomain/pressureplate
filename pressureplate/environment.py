@@ -13,6 +13,8 @@ _LAYER_GOAL = 4
 _LAYER_ZONE = 5
 
 
+
+
 class Actions(IntEnum):
     Up = 0
     Down = 1
@@ -76,10 +78,10 @@ class PressurePlate(gym.Env):
 
         self.action_space = spaces.Tuple(tuple(n_agents * [spaces.Discrete(len(Actions))]))
 
-        self.observation_space_dim = self.grid_size[0] * self.grid_size[1] + 2
+        self.observation_space_dim = sensor_range * sensor_range + 3
 
         self.observation_space = spaces.Tuple(tuple(
-        n_agents * [spaces.Box(np.array([0] * self.observation_space_dim), np.array([1] * self.observation_space_dim))]
+        n_agents * [spaces.Box(np.array([0] * self.observation_space_dim), np.array([27] * self.observation_space_dim))]
         ))
 
 
@@ -214,21 +216,13 @@ class PressurePlate(gym.Env):
                                 door.openCountDown = max(door.openCountDown, agent.duration)
                                 
 
-
-       
-
-
         # Detecting goal completion
         completed = True
         for agent in self.agents:
             if self.grid[_LAYER_ZONE, agent.y, agent.x] != 6:
                 completed = False
 
-        if completed:
-            self.goal.achieved = True
-
-        print( self._get_rewards() )
-        return self._get_obs(), self._get_rewards(), [self.goal.achieved] * self.n_agents, {}
+        return self._get_obs(), self._get_rewards(), [completed] * self.n_agents, {}
 
     def _detect_collision(self, proposed_position):
         """Need to check for collision with (1) grid edge, (2) walls, (3) closed doors (4) other agents"""
@@ -266,11 +260,11 @@ class PressurePlate(gym.Env):
     def reset(self):
         # Grid wipe
         self.grid = np.zeros((6, *self.grid_size))
-
+        
         # Agents
         self.agents = []
         for i in range(self.n_agents):
-            pos, agent_plate_id, duration = self.layout['AGENTS'][self.agent_order[i]]
+            pos, agent_plate_id, duration = self.layout['AGENTS'][i]
             
             self.agents.append(Agent(i, pos[0], pos[1], agent_plate_id = agent_plate_id , duration = duration))
             self.grid[_LAYER_AGENTS, pos[1], pos[0]] = 1
@@ -384,8 +378,8 @@ class PressurePlate(gym.Env):
             _goal = np.concatenate((_goal, np.zeros((y_down_padding, _goal.shape[1]))), axis=0)
             
             agent_obs = _agents + 2 * _walls + 3 * _goal + 4 * _plates + 6 * _doors
-            # agent_obs = agent_obs.reshape(-1) in production uncomment this line and the next one, this version better for human readability
-            # agent_obs = np.concatenate((agent_obs, np.array[agent.y, agent.x, agent.duration]))
+            agent_obs = agent_obs.reshape(-1) #in production uncomment this line and the next one, this version better for human readability
+            agent_obs = np.concatenate((agent_obs, np.array([agent.y, agent.x, agent.duration])))
             obs.append(agent_obs)
             #state representation: empty:0, agent:1, wall:2, goal:3, plate_and_no_agent:4, plate_and_agent:5, 
             #closed_door_and_no_agent:6, closed_door_and_agent:7, open_door_and_no_agent:12, open_door_and_agent:13
@@ -420,28 +414,39 @@ class PressurePlate(gym.Env):
         return grid
 
     def _get_rewards(self):
+        agent0_target = (13,23)
+        agent1_target = (4,23)
+        agent2_target = (4,27)
+        agent3_target = (13,27)
         rewards = []
+
+        def f(a,b):
+            return abs(a[0]-b[0]) + abs(a[1]-b[1])
 
         # The last agent's desired location is the goal instead of a plate, so we use an if/else block
         # to break between the two cases
         for i, agent in enumerate(self.agents):
-
-            if i == len(self.agents) - 1:
-                plate_loc = self.goal.x, self.goal.y
-            else:
-                plate_loc = self.plates[i].x, self.plates[i].y
-
-            curr_room = self._get_curr_room_reward(agent.y)
-
-            agent_loc = agent.x, agent.y
-
-            if i == curr_room:
-                reward = - np.linalg.norm((np.array(plate_loc) - np.array(agent_loc)), 1) / self.max_dist
-            else:
-                #print(str(agent.x) + "," + str(agent.y))
-                reward = -len(self.room_boundaries)+1 + curr_room
-            
-            rewards.append(reward)
+            agent_pos = (agent.x, agent.y)
+            if i == 0:
+                reward = -f(agent_pos, agent0_target) / 10
+                if reward == 0:
+                    reward = 10
+                rewards.append(reward)
+            elif i ==1:
+                reward = -f(agent_pos, agent1_target) / 10
+                if reward == 0:
+                    reward = 10
+                rewards.append(reward)
+            elif i == 2:
+                reward = -f(agent_pos, agent2_target) / 10
+                if reward == 0:
+                    reward = 10
+                rewards.append(reward)
+            elif i == 3:
+                reward = -f(agent_pos, agent3_target) / 10
+                if reward == 0:
+                    reward = 10
+                rewards.append(reward)
         return rewards
 
     def _get_curr_room_reward(self, agent_y):

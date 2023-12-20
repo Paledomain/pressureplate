@@ -26,25 +26,14 @@ class MADDPG:
         self.gamma = gamma
         obs_dims = [obs.shape[0] for obs in env.observation_space]
         act_dims = [act.n for act in env.action_space]
-        self.agents = [
-            Agent(
-                agent_idx=ii,
-                obs_dims=obs_dims,
-                act_dims=act_dims,
-                hidden_dim_width=hidden_dim_width,
-                critic_lr=critic_lr,
-                actor_lr=actor_lr,
-                gradient_clip=gradient_clip,
-                soft_update_size=soft_update_size,
-                policy_regulariser=policy_regulariser,
-                gradient_estimator=gradient_estimator,
-            )
-            for ii in range(self.n_agents)
-        ] 
-        #if pretrained_agents is None else pretrained_agents
+        if pretrained_agents is None :
+            self.agents = [Agent(agent_idx=ii,obs_dims=obs_dims,act_dims=act_dims,hidden_dim_width=hidden_dim_width,critic_lr=critic_lr,actor_lr=actor_lr,gradient_clip=gradient_clip,soft_update_size=soft_update_size,policy_regulariser=policy_regulariser,gradient_estimator=gradient_estimator,)for ii in range(self.n_agents)]
+        else:
+            self.agents = pretrained_agents
 
         self.return_std = RunningMeanStd(shape=(self.n_agents,)) if standardise_rewards else None
         self.gradient_estimator = gradient_estimator # Keep reference to GE object
+        self.evaluation_rewards_history = []
 
     def acts(self, obs: List):
         actions = [self.agents[ii].act_behaviour(obs[ii]) for ii in range(self.n_agents)]

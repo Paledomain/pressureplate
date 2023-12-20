@@ -13,14 +13,64 @@ register(
 )
 
 register(
-    id=f'pressureplate-custom-4p-v0',
+    id=f'pressureplate-custom-2p-0',
     entry_point='pressureplate.environment:PressurePlate',
     kwargs={
         'height': 28,
         'width': 14,
-        'n_agents': 4,
-        'sensor_range': 3,
-        'layout': 'custom'
+        'n_agents': 2,
+        'sensor_range': 5,
+        'layout': 'custom',
+        'mode':0
+    }
+)
+
+register(
+    id=f'pressureplate-custom-2p-1',
+    entry_point='pressureplate.environment:PressurePlate',
+    kwargs={
+        'height': 28,
+        'width': 14,
+        'n_agents': 2,
+        'sensor_range': 5,
+        'layout': 'custom',
+        'mode':1
+    }
+)
+register(
+    id=f'pressureplate-custom-2p-2',
+    entry_point='pressureplate.environment:PressurePlate',
+    kwargs={
+        'height': 28,
+        'width': 14,
+        'n_agents': 2,
+        'sensor_range': 5,
+        'layout': 'custom',
+        'mode':2
+    }
+)
+register(
+    id=f'pressureplate-custom-2p-3',
+    entry_point='pressureplate.environment:PressurePlate',
+    kwargs={
+        'height': 28,
+        'width': 14,
+        'n_agents': 2,
+        'sensor_range': 5,
+        'layout': 'custom',
+        'mode':3
+    }
+)
+register(
+    id=f'pressureplate-custom-2p-4',
+    entry_point='pressureplate.environment:PressurePlate',
+    kwargs={
+        'height': 28,
+        'width': 14,
+        'n_agents': 2,
+        'sensor_range': 5,
+        'layout': 'custom',
+        'mode':4
     }
 )
 

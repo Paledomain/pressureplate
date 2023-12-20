@@ -17,8 +17,7 @@ class Agent:
         gradient_clip,
         soft_update_size,
         policy_regulariser,
-        gradient_estimator,
-        # more TODO
+        gradient_estimator
     ):
         self.agent_idx = agent_idx
         self.soft_update_size = soft_update_size
@@ -43,8 +42,8 @@ class Agent:
         # ***** ****** *****
 
         # OPTIMISERS
-        self.optim_actor = Adam(self.policy.parameters(), lr=actor_lr, eps=0.001)
-        self.optim_critic = Adam(self.critic.parameters(), lr=critic_lr, eps=0.001)
+        self.optim_actor = Adam(self.policy.parameters(), lr=actor_lr)#, eps=0.001
+        self.optim_critic = Adam(self.critic.parameters(), lr=critic_lr)#, eps=0.001
 
     def act_behaviour(self, obs):
         policy_output = self.policy(Tensor(obs))
